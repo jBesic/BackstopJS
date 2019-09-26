@@ -131,6 +131,8 @@ function delegateScenarios (config) {
 
   const asyncCaptureLimit = config.asyncCaptureLimit === 0 ? 1 : config.asyncCaptureLimit || CONCURRENCY_DEFAULT;
 
+  global.numberOfRemainingScenarios = scenarioViews.length;
+
   if (/chrom./i.test(config.engine)) {
     const PORT = (config.startingPort || CHROMY_STARTING_PORT_NUMBER);
     var getFreePorts = require('./getFreePorts');

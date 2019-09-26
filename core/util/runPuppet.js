@@ -32,11 +32,14 @@ module.exports = function (args) {
   config._fileNameTemplate = config.fileNameTemplate || DEFAULT_FILENAME_TEMPLATE;
   config._outputFileFormatSuffix = '.' + ((config.outputFormat && config.outputFormat.match(/jpg|jpeg/)) || 'png');
   config._configId = config.id || engineTools.genHash(config.backstopConfigFileName);
+  config._selectorNotFoundPath = config.selector_not_found_path || config.env.backstop + SELECTOR_NOT_FOUND_PATH;
+  config._hiddenSelectorPath = config.hidden_selector_path || config.env.backstop + HIDDEN_SELECTOR_PATH;
+  config._errorSelectorPath = config.error_selector_path || config.env.backstop + ERROR_SELECTOR_PATH;
 
   return processScenarioView(scenario, variantOrScenarioLabelSafe, scenarioLabelSafe, viewport, config);
 };
 
-async function processScenarioView (scenario, variantOrScenarioLabelSafe, scenarioLabelSafe, viewport, config) {
+async function processScenarioView(scenario, variantOrScenarioLabelSafe, scenarioLabelSafe, viewport, config) {
   if (!config.paths) {
     config.paths = {};
   }
@@ -60,8 +63,20 @@ async function processScenarioView (scenario, variantOrScenarioLabelSafe, scenar
     config.engineOptions
   );
 
-  const browser = await puppeteer.launch(puppeteerArgs);
-  const page = await browser.newPage();
+  // Start new session if the browser is not started
+  if (!global.browser) {
+    global.browser = await puppeteer.launch(puppeteerArgs);
+    global.browserWSEndpoint = browser.wsEndpoint();
+
+    global.page = await browser.newPage();
+  }
+
+  // Get started browser and connect to it
+  browserWSEndpoint = global.browserWSEndpoint;
+  global.browser = await puppeteer.connect({ browserWSEndpoint });
+
+  browser = global.browser;
+  page = global.page;
 
   page.setViewport({ width: VP_W, height: VP_H });
   page.setDefaultNavigationTimeout(engineTools.getEngineOption(config, 'waitTimeout', TEST_TIMEOUT));
@@ -78,16 +93,6 @@ async function processScenarioView (scenario, variantOrScenarioLabelSafe, scenar
       readyResolve = resolve;
     });
   }
-
-  page.on('console', msg => {
-    for (let i = 0; i < msg.args().length; ++i) {
-      const line = msg.args()[i];
-      console.log(`Browser Console Log ${i}: ${line}`);
-      if (readyEvent && new RegExp(readyEvent).test(line)) {
-        readyResolve();
-      }
-    }
-  });
 
   let chromeVersion = await page.evaluate(_ => {
     let v = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
@@ -113,11 +118,15 @@ async function processScenarioView (scenario, variantOrScenarioLabelSafe, scenar
     }
 
     //  --- OPEN URL ---
+    var pageUrl = page.url();
     var url = scenario.url;
     if (isReference && scenario.referenceUrl) {
       url = scenario.referenceUrl;
     }
-    await page.goto(translateUrl(url));
+
+    if (pageUrl !== url) {
+      await page.goto(translateUrl(url));
+    }
 
     await injectBackstopTools(page);
 
@@ -246,7 +255,7 @@ async function processScenarioView (scenario, variantOrScenarioLabelSafe, scenar
       error = e;
     }
   } else {
-    await browser.close();
+    await browser.disconnect();
   }
 
   if (error) {
@@ -255,16 +264,16 @@ async function processScenarioView (scenario, variantOrScenarioLabelSafe, scenar
     testPair.engineErrorMsg = error.message;
 
     compareConfig = {
-      testPairs: [ testPair ]
+      testPairs: [testPair]
     };
-    fs.copy(config.env.backstop + ERROR_SELECTOR_PATH, filePath);
+    fs.copy(config._errorSelectorPath, filePath);
   }
 
   return Promise.resolve(compareConfig);
 }
 
 // TODO: Should be in engineTools
-async function delegateSelectors (
+async function delegateSelectors(
   page,
   browser,
   scenario,
@@ -332,15 +341,19 @@ async function delegateSelectors (
     };
     next();
   }).then(async () => {
-    console.log(chalk.green('x Close Browser'));
-    await browser.close();
+    if (global.numberOfRemainingScenarios === 1) {
+      console.log(chalk.green('x Close Browser'));
+      await browser.close();
+    } else {
+      await browser.disconnect();
+    }
   }).catch(async (err) => {
     console.log(chalk.red(err));
-    await browser.close();
+    await browser.disconnect();
   }).then(_ => compareConfig);
 }
 
-async function captureScreenshot (page, browser, selector, selectorMap, config, selectors) {
+async function captureScreenshot(page, browser, selector, selectorMap, config, selectors) {
   let filePath;
   let fullPage = (selector === NOCLIP_SELECTOR || selector === DOCUMENT_SELECTOR);
   if (selector) {
@@ -354,7 +367,7 @@ async function captureScreenshot (page, browser, selector, selectorMap, config, 
         });
     } catch (e) {
       console.log(chalk.red(`Error capturing..`), e);
-      return fs.copy(config.env.backstop + ERROR_SELECTOR_PATH, filePath);
+      return fs.copy(config._errorSelectorPath, filePath);
     }
   } else {
     // OTHER-SELECTOR screenshot
@@ -368,11 +381,11 @@ async function captureScreenshot (page, browser, selector, selectorMap, config, 
           await type.screenshot(params);
         } else {
           console.log(chalk.yellow(`Element not visible for capturing: ${s}`));
-          return fs.copy(config.env.backstop + HIDDEN_SELECTOR_PATH, path);
+          return fs.copy(config._hiddenSelectorPath, path);
         }
       } else {
         console.log(chalk.magenta(`Element not found for capturing: ${s}`));
-        return fs.copy(config.env.backstop + SELECTOR_NOT_FOUND_PATH, path);
+        return fs.copy(config._selectorNotFoundPath, path);
       }
     };
 
@@ -385,7 +398,7 @@ async function captureScreenshot (page, browser, selector, selectorMap, config, 
             await selectorShot(selector, filePath);
           } catch (e) {
             console.log(chalk.red(`Error capturing Element ${selector}`), e);
-            return fs.copy(config.env.backstop + ERROR_SELECTOR_PATH, filePath);
+            return fs.copy(config._errorSelectorPath, filePath);
           }
         })
       );
@@ -395,7 +408,7 @@ async function captureScreenshot (page, browser, selector, selectorMap, config, 
 }
 
 // handle relative file name
-function translateUrl (url) {
+function translateUrl(url) {
   const RE = new RegExp('^[./]');
   if (RE.test(url)) {
     const fileUrl = 'file://' + path.join(process.cwd(), url);
