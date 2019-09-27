@@ -40,6 +40,8 @@ module.exports = function (args) {
 };
 
 async function processScenarioView(scenario, variantOrScenarioLabelSafe, scenarioLabelSafe, viewport, config) {
+  global.numberOfRemainingScenarios = global.numberOfRemainingScenarios - 1;
+
   if (!config.paths) {
     config.paths = {};
   }
@@ -341,7 +343,7 @@ async function delegateSelectors(
     };
     next();
   }).then(async () => {
-    if (global.numberOfRemainingScenarios === 1) {
+    if (global.numberOfRemainingScenarios === 0) {
       console.log(chalk.green('x Close Browser'));
       await browser.close();
     } else {
