@@ -126,7 +126,7 @@ async function processScenarioView(scenario, variantOrScenarioLabelSafe, scenari
       url = scenario.referenceUrl;
     }
 
-    if (pageUrl !== url) {
+    if (!new RegExp(url).test(pageUrl)) {
       await page.goto(translateUrl(url));
     }
 
