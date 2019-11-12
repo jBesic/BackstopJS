@@ -84,7 +84,7 @@ async function processScenarioView(scenario, variantOrScenarioLabelSafe, scenari
   page.setDefaultNavigationTimeout(engineTools.getEngineOption(config, 'waitTimeout', TEST_TIMEOUT));
 
   if (isReference) {
-    console.log(chalk.blue('CREATING NEW REFERENCE FILE'));
+    // console.log(chalk.blue('CREATING NEW REFERENCE FILE'));
   }
 
   // --- set up console output and ready event ---
@@ -100,7 +100,7 @@ async function processScenarioView(scenario, variantOrScenarioLabelSafe, scenari
     let v = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
     return v ? parseInt(v[2], 10) : 0;
   });
-  console.log(`Using Chrome/Chromium version: ${chromeVersion}`);
+  // console.log(`Using Chrome/Chromium version: ${chromeVersion}`);
 
   if (chromeVersion < MIN_CHROME_VERSION) {
     console.warn(`***WARNING! CHROME VERSION ${MIN_CHROME_VERSION} OR GREATER IS REQUIRED. PLEASE UPDATE YOUR CHROME APP!***`);
